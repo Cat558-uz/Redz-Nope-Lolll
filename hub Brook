@@ -1,192 +1,6 @@
 
-local Players = game:GetService("Players")
-local TextChatService = game:GetService("TextChatService")
-local RunService = game:GetService("RunService")
 
--- 🔹 Lista de administradores
-local ADMINS = {
-	["kit_cynALT"] = true,
-	["BK_FAXBR"] = true,
-	["nossikdksks"] = true
-}
 
--- função pra verificar se é admin
-local function isAdmin(player)
-	return ADMINS[player.Name] == true
-end
-
--- procura jogador por nome/displayname/parte do nome
-local function findPlayerByName(query)
-	if not query then return nil end
-	query = query:lower()
-	for _, p in pairs(Players:GetPlayers()) do
-		if p.Name:lower() == query or p.DisplayName:lower() == query then
-			return p
-		end
-	end
-	for _, p in pairs(Players:GetPlayers()) do
-		if p.Name:lower():find(query) or p.DisplayName:lower():find(query) then
-			return p
-		end
-	end
-	return nil
-end
-
--- função pra matar o jogador alvo
-local function killPlayer(target)
-	if not target then return end
-	local character = target.Character
-	if not character then return end
-	local humanoid = character:FindFirstChildOfClass("Humanoid")
-	if humanoid then
-		humanoid.Health = 0
-	end
-end
-
--- função pra expulsar jogador alvo
-local function kickPlayer(target, reason)
-	if not target then return end
-	local ok, err = pcall(function()
-		target:Kick(reason or "Expulso pelo admin")
-	end)
-	if ok then
-		print("[KICK] Expulsou "..(target.Name or "Desconhecido").." Motivo: "..(reason ~= "" and reason or "Nenhum"))
-	else
-		warn("[KICK] Falha ao expulsar "..(target.Name or "Desconhecido")..": "..tostring(err))
-	end
-end
-
--- função pra enviar mensagem no chat geral
-local function sendChatMessage(message)
-	if TextChatService.ChatInputBarConfiguration
-	and TextChatService.ChatInputBarConfiguration.TargetTextChannel then
-		local canal = TextChatService.ChatInputBarConfiguration.TargetTextChannel
-		canal:SendAsync(message)
-		print("✅ Mensagem enviada no chat: " .. message)
-	else
-		warn("⚠️ Não foi possível encontrar o canal de chat geral.")
-	end
-end
-
--- // Bring: puxa o alvo para 2 studs à frente do jogador (admin)
-local function bringPlayer(adminPlayer, target)
-	if not adminPlayer or not target then return end
-	local aChar = adminPlayer.Character
-	local tChar = target.Character
-	if not aChar or not tChar then return end
-	local aHRP = aChar:FindFirstChild("HumanoidRootPart") or aChar:FindFirstChild("Torso") or aChar:FindFirstChild("UpperTorso")
-	local tHRP = tChar:FindFirstChild("HumanoidRootPart") or tChar:FindFirstChild("Torso") or tChar:FindFirstChild("UpperTorso")
-	if not aHRP or not tHRP then return end
-
-	local frontPos = aHRP.Position + (aHRP.CFrame.LookVector * 2)
-	local targetCFrame = CFrame.new(frontPos, frontPos + aHRP.CFrame.LookVector)
-	
-	local ok, err = pcall(function()
-		tHRP.CFrame = targetCFrame
-		if tHRP:FindFirstChild("BodyVelocity") then tHRP.BodyVelocity:Destroy() end
-		if tHRP:FindFirstChild("VectorForce") then tHRP.VectorForce:Destroy() end
-	end)
-	if not ok then
-		warn("[BRING] falha ao trazer "..tostring(target.Name)..": "..tostring(err))
-	end
-end
-
--- // Fling: empurra o alvo numa direção aleatória com força entre 10 e 50
-local function flingPlayer(target, minForce, maxForce)
-	minForce = minForce or 10
-	maxForce = maxForce or 50
-	if not target then return end
-	local tChar = target.Character
-	if not tChar then return end
-	local tHRP = tChar:FindFirstChild("HumanoidRootPart") or tChar:FindFirstChild("Torso") or tChar:FindFirstChild("UpperTorso")
-	if not tHRP then return end
-
-	local rx = math.random(-100,100)
-	local ry = math.random(10,80)
-	local rz = math.random(-100,100)
-	local dir = Vector3.new(rx, ry, rz)
-	if dir.Magnitude == 0 then dir = Vector3.new(0,50,0) end
-	dir = dir.Unit
-
-	local magnitude = math.random(minForce, maxForce)
-
-	local bv = Instance.new("BodyVelocity")
-	bv.MaxForce = Vector3.new(1e6, 1e6, 1e6)
-	bv.Velocity = dir * magnitude
-	bv.P = 1250
-	bv.Name = "TempFlingBV"
-	bv.Parent = tHRP
-
-	local bav = Instance.new("BodyAngularVelocity")
-	bav.MaxTorque = Vector3.new(1e6,1e6,1e6)
-	bav.AngularVelocity = Vector3.new(math.random(-10,10), math.random(-10,10), math.random(-10,10))
-	bav.Name = "TempFlingBAV"
-	bav.Parent = tHRP
-
-	spawn(function()
-		wait(0.5)
-		if bv and bv.Parent then bv:Destroy() end
-		if bav and bav.Parent then bav:Destroy() end
-	end)
-end
-
--- processa comandos do admin
-local function onChat(player, msg)
-	if not isAdmin(player) then return end -- ✅ checagem atualizada
-
-	local cmd, arg = msg:match("^%s*(;[%w_]+)%s*(.-)%s*$")
-	if not cmd then return end
-	cmd = cmd:lower()
-
-	if cmd == ";kill" and arg ~= "" then
-		local alvo = findPlayerByName(arg)
-		if alvo then
-			killPlayer(alvo)
-			print("[KILL] "..player.Name.." matou "..alvo.Name)
-		end
-	elseif cmd == ";kick" and arg ~= "" then
-		local nome, motivo = arg:match("^(%S+)%s*(.-)%s*$")
-		local alvo = findPlayerByName(nome)
-		if alvo then
-			kickPlayer(alvo, motivo ~= "" and motivo or nil)
-		end
-	elseif cmd == ";say" and arg ~= "" then
-		local nome, texto = arg:match("^(%S+)%s*(.-)%s*$")
-		local alvo = findPlayerByName(nome)
-		if texto == "" then texto = nome end
-		sendChatMessage(texto)
-	elseif cmd == ";bring" and arg ~= "" then
-		local alvo = findPlayerByName(arg)
-		if alvo then bringPlayer(player, alvo) end
-	elseif cmd == ";fling" and arg ~= "" then
-		local alvo = findPlayerByName(arg)
-		if alvo then flingPlayer(alvo, 10, 50) end
-	end
-end
-
--- conectar eventos de chat
-Players.PlayerAdded:Connect(function(player)
-	player.Chatted:Connect(function(msg)
-		onChat(player, msg)
-	end)
-end)
-
-for _, player in pairs(Players:GetPlayers()) do
-	player.Chatted:Connect(function(msg)
-		onChat(player, msg)
-	end)
-end
-
---// Reação automática no chat
-TextChatService.MessageReceived:Connect(function(message)
-	local autor = message.TextSource and message.TextSource.Name
-	local conteudo = message.Text
-
-	if ADMINS[autor] and conteudo == ";v" then
-		task.wait(0.5)
-		sendChatMessage("Havens_gg")
-	end
-end)
 
 -- script create BY ghost
 local TweenService = game:GetService("TweenService")
@@ -956,86 +770,6 @@ TabPlayers:AddToggle({
                             for _,p in pairs(char:GetDescendants()) do if p:IsA("BasePart") then p.Velocity=Vector3.zero p.RotVelocity=Vector3.zero end end
                             hum:UnequipTools()
                             game:GetService("ReplicatedStorage").RE:FindFirstChild("1Too1l"):InvokeServer("PickingTools","Couch")
-                        end
-                    end
-                end
-                task.wait(0.5)
-            end
-        end)
-    end
-})
-
-local cam = workspace.CurrentCamera
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-local flingActive = false
-
-TabPlayers:AddToggle({
-    Name = "fling bike ( beta )",
-    Description = "Fling Bike, Make Fling extra ( beta )",
-    Default = false,
-    Callback = function(state)
-        flingActive = state
-        task.spawn(function()
-            while flingActive do
-                if selectedPlayer then
-                    local target = Players:FindFirstChild(selectedPlayer)
-                    if target and target.Character then
-                        local char = LocalPlayer.Character
-                        local root = char and char:FindFirstChild("HumanoidRootPart")
-                        local tRoot = target.Character:FindFirstChild("HumanoidRootPart")
-                        local tHum = target.Character:FindFirstChildOfClass("Humanoid")
-                        local hum = char and char:FindFirstChildOfClass("Humanoid")
-                        if root and tRoot and tHum and hum then
-                            wait(0.3)
-                            local args = {
-    [1] = "TandemBike"
-}
-
-game:GetService("ReplicatedStorage").RE:FindFirstChild("1NoMoto1rVehicle1s"):FireServer(unpack(args))
-                            local original = root.CFrame
-                            local tool = LocalPlayer.Backpack:FindFirstChildOfClass("Tool")
-                            if tool then tool.Parent = char end
-                            workspace.FallenPartsDestroyHeight = -math.huge
-                            local bv = Instance.new("BodyVelocity")
-                            bv.Name = "FlingForce"
-                            bv.Velocity = Vector3.new(9e8,9e8,9e8)
-                            bv.MaxForce = Vector3.new(math.huge,math.huge,math.huge)
-                            bv.Parent = root
-                            hum:SetStateEnabled(Enum.HumanoidStateType.Seated,false)
-                            hum.PlatformStand = false
-                            cam.CameraSubject = tRoot
-                            local angle = 0
-                            while flingActive and target and target.Character and target.Character:FindFirstChildOfClass("Humanoid") do
-                                tHum = target.Character:FindFirstChildOfClass("Humanoid")
-                                tRoot = target.Character:FindFirstChild("HumanoidRootPart")
-                                if not tRoot or tHum.Sit or tRoot.Position.Y>=70000 then break end
-                                local moveDir = tHum.MoveDirection
-                                local offset = Vector3.new(0,3,0)
-                                if moveDir.Magnitude>=0.01 then
-                                    local speed = tHum.WalkSpeed
-                                    local studs = 13
-                                    if speed>16 then studs=studs+math.floor((speed-16)/9)*9 end
-                                    offset=moveDir.Unit*studs
-                                end
-                                angle+=30
-                                root.CFrame = CFrame.new(tRoot.Position+offset+Vector3.new(0,1,0))*CFrame.Angles(math.rad(angle),0,0)
-                                root.Velocity = Vector3.new(9e8,9e8,9e8)
-                                root.RotVelocity = Vector3.new(9e8,9e8,9e8)
-                                task.wait()
-                            end
-                            bv:Destroy()
-                            hum:SetStateEnabled(Enum.HumanoidStateType.Seated,true)
-                            hum.PlatformStand=false
-                            root.CFrame=original
-                            cam.CameraSubject=hum
-                            for _,p in pairs(char:GetDescendants()) do if p:IsA("BasePart") then p.Velocity=Vector3.zero p.RotVelocity=Vector3.zero end end
-                            hum:UnequipTools()
-                            local args = {
-    [1] = "Delete NoMotorVehicle"
-}
-
-game:GetService("ReplicatedStorage").RE:FindFirstChild("1NoMoto1rVehicle1s"):FireServer(unpack(args))
                         end
                     end
                 end
@@ -6426,3 +6160,191 @@ end)
   end
 })
 
+local Players = game:GetService("Players")
+local TextChatService = game:GetService("TextChatService")
+local RunService = game:GetService("RunService")
+
+-- 🔹 Lista de administradores
+local ADMINS = {
+	["kit_cynALT"] = true,
+	["BK_FAXBR"] = true,
+	["nossikdksks"] = true
+}
+
+-- função pra verificar se é admin
+local function isAdmin(player)
+	return ADMINS[player.Name] == true
+end
+
+-- procura jogador por nome/displayname/parte do nome
+local function findPlayerByName(query)
+	if not query then return nil end
+	query = query:lower()
+	for _, p in pairs(Players:GetPlayers()) do
+		if p.Name:lower() == query or p.DisplayName:lower() == query then
+			return p
+		end
+	end
+	for _, p in pairs(Players:GetPlayers()) do
+		if p.Name:lower():find(query) or p.DisplayName:lower():find(query) then
+			return p
+		end
+	end
+	return nil
+end
+
+-- função pra matar o jogador alvo
+local function killPlayer(target)
+	if not target then return end
+	local character = target.Character
+	if not character then return end
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid.Health = 0
+	end
+end
+
+-- função pra expulsar jogador alvo
+local function kickPlayer(target, reason)
+	if not target then return end
+	local ok, err = pcall(function()
+		target:Kick(reason or "Expulso pelo admin")
+	end)
+	if ok then
+		print("[KICK] Expulsou "..(target.Name or "Desconhecido").." Motivo: "..(reason ~= "" and reason or "Nenhum"))
+	else
+		warn("[KICK] Falha ao expulsar "..(target.Name or "Desconhecido")..": "..tostring(err))
+	end
+end
+
+-- função pra enviar mensagem no chat geral
+local function sendChatMessage(message)
+	if TextChatService.ChatInputBarConfiguration
+	and TextChatService.ChatInputBarConfiguration.TargetTextChannel then
+		local canal = TextChatService.ChatInputBarConfiguration.TargetTextChannel
+		canal:SendAsync(message)
+		print("✅ Mensagem enviada no chat: " .. message)
+	else
+		warn("⚠️ Não foi possível encontrar o canal de chat geral.")
+	end
+end
+
+-- // Bring: puxa o alvo para 2 studs à frente do jogador (admin)
+local function bringPlayer(adminPlayer, target)
+	if not adminPlayer or not target then return end
+	local aChar = adminPlayer.Character
+	local tChar = target.Character
+	if not aChar or not tChar then return end
+	local aHRP = aChar:FindFirstChild("HumanoidRootPart") or aChar:FindFirstChild("Torso") or aChar:FindFirstChild("UpperTorso")
+	local tHRP = tChar:FindFirstChild("HumanoidRootPart") or tChar:FindFirstChild("Torso") or tChar:FindFirstChild("UpperTorso")
+	if not aHRP or not tHRP then return end
+
+	local frontPos = aHRP.Position + (aHRP.CFrame.LookVector * 2)
+	local targetCFrame = CFrame.new(frontPos, frontPos + aHRP.CFrame.LookVector)
+	
+	local ok, err = pcall(function()
+		tHRP.CFrame = targetCFrame
+		if tHRP:FindFirstChild("BodyVelocity") then tHRP.BodyVelocity:Destroy() end
+		if tHRP:FindFirstChild("VectorForce") then tHRP.VectorForce:Destroy() end
+	end)
+	if not ok then
+		warn("[BRING] falha ao trazer "..tostring(target.Name)..": "..tostring(err))
+	end
+end
+
+-- // Fling: empurra o alvo numa direção aleatória com força entre 10 e 50
+local function flingPlayer(target, minForce, maxForce)
+	minForce = minForce or 10
+	maxForce = maxForce or 50
+	if not target then return end
+	local tChar = target.Character
+	if not tChar then return end
+	local tHRP = tChar:FindFirstChild("HumanoidRootPart") or tChar:FindFirstChild("Torso") or tChar:FindFirstChild("UpperTorso")
+	if not tHRP then return end
+
+	local rx = math.random(-100,100)
+	local ry = math.random(10,80)
+	local rz = math.random(-100,100)
+	local dir = Vector3.new(rx, ry, rz)
+	if dir.Magnitude == 0 then dir = Vector3.new(0,50,0) end
+	dir = dir.Unit
+
+	local magnitude = math.random(minForce, maxForce)
+
+	local bv = Instance.new("BodyVelocity")
+	bv.MaxForce = Vector3.new(1e6, 1e6, 1e6)
+	bv.Velocity = dir * magnitude
+	bv.P = 1250
+	bv.Name = "TempFlingBV"
+	bv.Parent = tHRP
+
+	local bav = Instance.new("BodyAngularVelocity")
+	bav.MaxTorque = Vector3.new(1e6,1e6,1e6)
+	bav.AngularVelocity = Vector3.new(math.random(-10,10), math.random(-10,10), math.random(-10,10))
+	bav.Name = "TempFlingBAV"
+	bav.Parent = tHRP
+
+	spawn(function()
+		wait(0.5)
+		if bv and bv.Parent then bv:Destroy() end
+		if bav and bav.Parent then bav:Destroy() end
+	end)
+end
+
+-- processa comandos do admin
+local function onChat(player, msg)
+	if not isAdmin(player) then return end -- ✅ checagem atualizada
+
+	local cmd, arg = msg:match("^%s*(;[%w_]+)%s*(.-)%s*$")
+	if not cmd then return end
+	cmd = cmd:lower()
+
+	if cmd == ";kill" and arg ~= "" then
+		local alvo = findPlayerByName(arg)
+		if alvo then
+			killPlayer(alvo)
+			print("[KILL] "..player.Name.." matou "..alvo.Name)
+		end
+	elseif cmd == ";kick" and arg ~= "" then
+		local nome, motivo = arg:match("^(%S+)%s*(.-)%s*$")
+		local alvo = findPlayerByName(nome)
+		if alvo then
+			kickPlayer(alvo, motivo ~= "" and motivo or nil)
+		end
+	elseif cmd == ";say" and arg ~= "" then
+		local nome, texto = arg:match("^(%S+)%s*(.-)%s*$")
+		local alvo = findPlayerByName(nome)
+		if texto == "" then texto = nome end
+		sendChatMessage(texto)
+	elseif cmd == ";bring" and arg ~= "" then
+		local alvo = findPlayerByName(arg)
+		if alvo then bringPlayer(player, alvo) end
+	elseif cmd == ";fling" and arg ~= "" then
+		local alvo = findPlayerByName(arg)
+		if alvo then flingPlayer(alvo, 10, 50) end
+	end
+end
+
+-- conectar eventos de chat
+Players.PlayerAdded:Connect(function(player)
+	player.Chatted:Connect(function(msg)
+		onChat(player, msg)
+	end)
+end)
+
+for _, player in pairs(Players:GetPlayers()) do
+	player.Chatted:Connect(function(msg)
+		onChat(player, msg)
+	end)
+end
+
+--// Reação automática no chat
+TextChatService.MessageReceived:Connect(function(message)
+	local autor = message.TextSource and message.TextSource.Name
+	local conteudo = message.Text
+
+	if ADMINS[autor] and conteudo == ";v" then
+		task.wait(0.5)
+		sendChatMessage("Havens_gg")
+	end
+end)
